@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>동네Bro v3 — 인테리어 현장 관리</title>
+<meta name="theme-color" content="#4a8262">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  /* ===== 기본 & 변수 ===== */
+  :root{
+    --bg:#f7f3ec; --bg-soft:#ede4d2;
+    --paper:#ffffff; --paper-soft:#faf6ee;
+    --ink:#2c2820; --ink-soft:#4a4338; --ink-mute:#6b6450; --ink-faint:#a39c8a;
+    --line:#ece5d6; --line-soft:#f0eadb;
+    --accent:#4a8262; --accent-dark:#3d6e52; --accent-light:#e5f0e8;
+    --warn:#d8a72a; --danger:#c84a3a; --danger-bg:#fdecec;
+    --radius:12px; --radius-sm:8px; --radius-lg:16px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.04);
+    --shadow:0 4px 14px rgba(0,0,0,0.06);
+    --shadow-lg:0 12px 40px rgba(0,0,0,0.12);
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html{ -webkit-text-size-adjust:100%; }
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.55; min-height:100vh;
+  }
+  button{ font-family:inherit; cursor:pointer; border:none; background:none; color:inherit; }
+  input,textarea,select{ font-family:inherit; }
+  a{ color:var(--accent); text-decoration:none; }
+
+  /* ===== 공통 컴포넌트 ===== */
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    padding:10px 16px; border-radius:10px; font-weight:700; font-size:13.5px;
+    cursor:pointer; transition:all 0.15s; border:none; white-space:nowrap;
+  }
+  .btn:disabled{ opacity:0.55; cursor:not-allowed; }
+  .btn-primary{
+    background:linear-gradient(135deg,var(--accent),var(--accent-dark)); color:#fff;
+    box-shadow:0 3px 10px rgba(74,130,98,0.18);
+  }
+  .btn-primary:hover:not(:disabled){ transform:translateY(-1px); box-shadow:0 6px 18px rgba(74,130,98,0.25); }
+  .btn-ghost{ background:#f3ede2; color:var(--ink-mute); }
+  .btn-ghost:hover{ background:var(--line); }
+  .btn-danger{ background:var(--danger-bg); color:var(--danger); }
+  .btn-sm{ padding:7px 12px; font-size:12px; border-radius:8px; }
+
+  .card{ background:var(--paper); border:1px solid var(--line); border-radius:var(--radius-lg); padding:18px; }
+
+  .fld{ display:flex; flex-direction:column; gap:5px; margin-bottom:14px; }
+  .fld .lbl{ font-size:12.5px; font-weight:700; color:var(--ink-mute); }
+  .fld .lbl .req{ color:var(--danger); }
+  .fld input, .fld textarea, .fld select{
+    width:100%; border:1.5px solid var(--line); border-radius:10px;
+    padding:11px 13px; font-size:14px; background:var(--paper);
+  }
+  .fld input:focus, .fld textarea:focus, .fld select:focus{
+    outline:2px solid var(--accent); border-color:transparent;
+  }
+  .fld textarea{ min-height:80px; resize:vertical; line-height:1.55; }
+  .fld-row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+
+  /* ===== 로딩 ===== */
+  .center-screen{
+    min-height:100vh; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; padding:24px; gap:14px;
+  }
+  .spin{
+    width:40px; height:40px;
+    border:3px solid var(--line); border-top-color:var(--accent);
+    border-radius:50%; animation:spin 0.9s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  /* ===== 인증 화면 ===== */
+  .auth{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(180deg,var(--bg) 0%,var(--bg-soft) 100%);
+    padding:20px;
+  }
+  .auth-card{
+    background:var(--paper); border-radius:22px; padding:36px 30px;
+    max-width:420px; width:100%;
+    box-shadow:0 12px 40px rgba(0,0,0,0.08);
+    border:1px solid var(--line);
+  }
+  .auth-card h1{
+    font-size:28px; font-weight:800; color:var(--accent);
+    text-align:center; margin-bottom:6px; letter-spacing:-0.5px;
+  }
+  .auth-card .auth-sub{ font-size:13px; color:var(--ink-faint); text-align:center; margin-bottom:24px; }
+  .auth-card .auth-btn{
+    width:100%; padding:14px; border-radius:12px;
+    font-size:14.5px; font-weight:800; margin-top:18px;
+    background:linear-gradient(135deg,var(--accent),var(--accent-dark)); color:#fff;
+    box-shadow:0 6px 18px rgba(74,130,98,0.22);
+  }
+  .auth-toggle{ text-align:center; margin-top:14px; font-size:12.5px; color:var(--ink-faint); }
+  .auth-toggle a{ font-weight:700; cursor:pointer; }
+
+  /* ===== 앱 레이아웃 ===== */
+  .top-bar{
+    background:var(--paper); border-bottom:1px solid var(--line);
+    padding:12px 22px;
+    display:flex; align-items:center; justify-content:space-between;
+    position:sticky; top:0; z-index:50;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; font-size:18px; font-weight:800; color:var(--accent); letter-spacing:-0.5px; }
+  .brand-tag{ font-size:10.5px; font-weight:700; color:var(--ink-faint); background:var(--paper-soft); padding:3px 8px; border-radius:999px; }
+  .top-right{ display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--ink-mute); }
+  .top-right .who{ font-weight:700; color:var(--ink); }
+  .btn-logout{ background:var(--paper-soft); color:var(--ink-mute); padding:6px 12px; border-radius:8px; font-size:11.5px; font-weight:700; }
+
+  .app{ display:grid; grid-template-columns:220px 1fr; min-height:calc(100vh - 60px); }
+  .sidebar{
+    background:var(--paper); border-right:1px solid var(--line);
+    padding:16px 12px;
+  }
+  .nav-section{ margin-bottom:16px; }
+  .nav-section-title{
+    font-size:10px; font-weight:800; color:var(--ink-faint);
+    text-transform:uppercase; letter-spacing:1px; padding:0 10px 6px;
+  }
+  .nav-btn{
+    display:block; width:100%; text-align:left;
+    padding:9px 12px; border-radius:9px;
+    font-size:13.5px; font-weight:600; color:var(--ink-soft);
+    margin-bottom:2px; transition:background 0.15s;
+  }
+  .nav-btn:hover{ background:var(--paper-soft); }
+  .nav-btn.active{
+    background:linear-gradient(135deg,var(--accent),var(--accent-dark)); color:#fff;
+    box-shadow:0 3px 10px rgba(74,130,98,0.18);
+  }
+  .nav-btn .badge{ float:right; background:var(--danger); color:#fff; font-size:10px; padding:1px 7px; border-radius:999px; font-weight:800; }
+
+  .main{ padding:22px 26px; overflow-y:auto; }
+  .page-head{ display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:18px; }
+  .page-title{ font-size:22px; font-weight:800; color:var(--ink); letter-spacing:-0.5px; }
+  .page-sub{ font-size:12.5px; color:var(--ink-mute); margin-top:3px; }
+
+  /* ===== 대시보드 ===== */
+  .stat-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:18px; }
+  .stat{ background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:16px 18px; }
+  .stat .lbl{ font-size:11.5px; color:var(--ink-faint); font-weight:700; margin-bottom:5px; }
+  .stat .num{ font-size:24px; font-weight:800; color:var(--ink); }
+  .stat .sub{ font-size:11px; color:var(--ink-faint); margin-top:2px; }
+
+  /* ===== 현장 카드 ===== */
+  .site-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+  .site-card{
+    background:var(--paper); border:1px solid var(--line);
+    border-radius:14px; padding:16px; cursor:pointer;
+    border-left:4px solid var(--accent); transition:all 0.15s;
+  }
+  .site-card:hover{ transform:translateY(-2px); box-shadow:0 8px 22px rgba(0,0,0,0.06); }
+  .site-card .row1{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px; }
+  .site-card .name{ font-size:15px; font-weight:800; color:var(--ink); margin-bottom:3px; }
+  .site-card .addr{ font-size:12px; color:var(--ink-mute); margin-bottom:8px; }
+  .site-card .meta{ display:flex; gap:10px; flex-wrap:wrap; font-size:11px; color:var(--ink-faint); margin-bottom:8px; }
+  .site-card .status{
+    display:inline-block; padding:3px 9px; border-radius:999px;
+    font-size:10.5px; font-weight:800;
+  }
+  .status-진행{ background:#ecf6ef; color:var(--accent); }
+  .status-견적{ background:#fdfaef; color:var(--warn); }
+  .status-완료{ background:#f0eadb; color:var(--ink-faint); }
+  .status-보류{ background:#fdecec; color:var(--danger); }
+  .site-card .footer{
+    display:flex; justify-content:space-between; align-items:center;
+    margin-top:10px; padding-top:10px; border-top:1px dashed var(--line);
+    font-size:11.5px; color:var(--ink-mute);
+  }
+  .site-card .price{ font-weight:800; color:var(--accent); }
+
+  /* ===== 모달 ===== */
+  .modal-bg{
+    position:fixed; inset:0; background:rgba(44,40,32,0.55);
+    backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
+    display:none; align-items:center; justify-content:center;
+    z-index:300; padding:16px;
+  }
+  .modal-bg.show{ display:flex; }
+  .modal{
+    background:var(--paper); border-radius:18px;
+    width:100%; max-width:540px; max-height:90vh; overflow-y:auto;
+    box-shadow:0 18px 50px rgba(0,0,0,0.2);
+  }
+  .modal-head{ padding:18px 20px 12px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); }
+  .modal-head .t{ font-size:16.5px; font-weight:800; color:var(--ink); }
+  .modal-close{ background:var(--paper-soft); color:var(--ink-mute); width:30px; height:30px; border-radius:8px; font-weight:800; font-size:14px; }
+  .modal-body{ padding:18px 20px; }
+  .modal-foot{ padding:12px 20px 18px; display:flex; gap:8px; justify-content:flex-end; border-top:1px solid var(--line); }
+
+  /* ===== 빈 상태 ===== */
+  .empty-state{
+    text-align:center; padding:60px 20px;
+    background:var(--paper); border:1px solid var(--line); border-radius:var(--radius-lg);
+    color:var(--ink-faint);
+  }
+  .empty-state .emoji{ font-size:54px; display:block; margin-bottom:12px; }
+  .empty-state .ttl{ font-size:15px; font-weight:800; color:var(--ink); margin-bottom:6px; }
+  .empty-state .sub{ font-size:12.5px; color:var(--ink-mute); }
+
+  /* ===== 토스트 ===== */
+  .toast{
+    position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
+    background:var(--ink); color:#fff;
+    padding:11px 22px; border-radius:999px;
+    font-size:13px; font-weight:600;
+    z-index:500; opacity:0; pointer-events:none;
+    transition:opacity 0.2s;
+    box-shadow:0 6px 18px rgba(0,0,0,0.15);
+  }
+  .toast.show{ opacity:1; }
+  .toast.err{ background:var(--danger); }
+  .toast.ok{ background:var(--accent); }
+
+  /* ===== 모바일 ===== */
+  @media (max-width:768px){
+    .app{ grid-template-columns:1fr; }
+    .sidebar{
+      position:fixed; bottom:0; left:0; right:0; top:auto;
+      padding:6px 8px; border-right:none; border-top:1px solid var(--line);
+      display:flex; gap:4px; overflow-x:auto;
+      z-index:40; background:rgba(255,255,255,0.97);
+      backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    }
+    .nav-section{ margin:0; flex-shrink:0; }
+    .nav-section-title{ display:none; }
+    .nav-btn{ white-space:nowrap; padding:8px 11px; font-size:12px; }
+    .main{ padding:16px; padding-bottom:80px; }
+    .top-bar{ padding:10px 14px; }
+    .brand{ font-size:15px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 로딩 -->
+<div id="loadingScreen" class="center-screen">
+  <div class="spin"></div>
+  <div style="font-size:14px;color:var(--ink-mute);">불러오는 중...</div>
+</div>
+
+<!-- 인증 -->
+<div id="authScreen" class="auth" style="display:none;">
+  <div class="auth-card">
+    <h1>🌿 동네Bro</h1>
+    <div class="auth-sub">인테리어 현장 관리 시스템 v3</div>
+
+    <form id="authForm" onsubmit="return false;">
+      <div class="fld" id="fldCompany" style="display:none;">
+        <div class="lbl">회사명 <span class="req">*</span></div>
+        <input type="text" id="authCompany" placeholder="예: 동네Bro 인테리어">
+      </div>
+      <div class="fld" id="fldName" style="display:none;">
+        <div class="lbl">대표 이름 <span class="req">*</span></div>
+        <input type="text" id="authName" placeholder="예: 이주성">
+      </div>
+      <div class="fld">
+        <div class="lbl">이메일 <span class="req">*</span></div>
+        <input type="email" id="authEmail" autocomplete="email" required>
+      </div>
+      <div class="fld">
+        <div class="lbl">비밀번호 <span class="req">*</span></div>
+        <input type="password" id="authPassword" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="auth-btn" id="authBtn">로그인</button>
+    </form>
+    <div class="auth-toggle">
+      <span id="authToggleText">동네Bro 처음이세요?</span>
+      <a id="authToggleLink">새 회사 등록</a>
+    </div>
+  </div>
+</div>
+
+<!-- 메인 앱 -->
+<div id="appShell" style="display:none;">
+  <div class="top-bar">
+    <div class="brand">
+      🌿 동네Bro
+      <span class="brand-tag">v3.0</span>
+    </div>
+    <div class="top-right">
+      <span>👤 <span class="who" id="userName">―</span></span>
+      <button class="btn-logout" onclick="signOut()">로그아웃</button>
+    </div>
+  </div>
+
+  <div class="app">
+    <nav class="sidebar" id="sidebar">
+      <!-- 사이드바 동적 -->
+    </nav>
+    <main class="main" id="mainView">
+      <!-- 본문 동적 -->
+    </main>
+  </div>
+</div>
+
+<!-- 모달 -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="t" id="modalTitle">제목</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot" id="modalFoot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+ * 동네Bro v3 — 깨끗한 시작
+ * - Supabase Auth
+ * - 회사별 멀티테넌트 (state.data JSONB 1행/회사)
+ * - 단일 state store
+ * - hash 라우팅
+ * - setInterval 없음 / wrapper 없음 / monkey-patch 없음
+ * ============================================================ */
+
+const SUPABASE_URL = 'https://pshcyqamfclukkoqigvb.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBzaGN5cWFtZmNsdWtrb3FpZ3ZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMDYwODMsImV4cCI6MjA5Mzc4MjA4M30.EvoBS4TjybG_yfMavmhThVzo5BtPvY3HSL1JaesguhY';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const VERSION = 'v3.0.0';
+
+/* ===== 단일 상태 store ===== */
+const store = {
+  user: null,         /* { id, email } */
+  profile: null,      /* { id, name, company_id, role } */
+  companyId: null,    /* 정수 또는 UUID */
+  company: null,      /* { id, name, ... } */
+  data: {             /* state.data — JSONB blob */
+    sites: [],
+    quotes: [],
+    contracts: [],
+    payments: [],
+    consultations: [],
+    consultRequests: [],
+    consultTidies: [],
+    priceBook: [],
+    events: [],
+    companySetup: {}
+  },
+  view: 'home',       /* 현재 화면 */
+  saveTimer: null,
+  dirty: false,
+  authMode: 'signin'
+};
+
+/* ===== 유틸 ===== */
+const $ = (id) => document.getElementById(id);
+const show = (id) => { const e=$(id); if(e) e.style.display=''; };
+const hide = (id) => { const e=$(id); if(e) e.style.display='none'; };
+const escH = (x) => (x==null?'':String(x)).replace(/[<>&"]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;"})[c]);
+const uuid = () => crypto.randomUUID ? crypto.randomUUID() : ('id_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));
+const todayISO = () => { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+function fmtKRW(n){
+  n = Number(n)||0;
+  if(n >= 10000000){
+    const eok = Math.floor(n/100000000);
+    const man = Math.floor((n%100000000)/10000);
+    let s = '';
+    if(eok>0) s += eok+'억';
+    if(man>0) s += (s?' ':'') + man.toLocaleString()+'만';
+    if(!s) s = n.toLocaleString();
+    return s+'원';
+  }
+  return n.toLocaleString()+'원';
+}
+function toast(msg, kind){
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (kind==='err'?' err':kind==='ok'?' ok':'');
+  setTimeout(()=> t.classList.remove('show'), 2400);
+}
+
+/* ===== 모달 ===== */
+function openModal(title, bodyHTML, footHTML){
+  $('modalTitle').textContent = title;
+  $('modalBody').innerHTML = bodyHTML;
+  $('modalFoot').innerHTML = footHTML || '<button class="btn btn-ghost" onclick="closeModal()">닫기</button>';
+  $('modal').classList.add('show');
+}
+function closeModal(){ $('modal').classList.remove('show'); }
+window.closeModal = closeModal;
+$('modal').onclick = (e) => { if(e.target === $('modal')) closeModal(); };
+
+/* ===== 인증 흐름 ===== */
+function setAuthMode(mode){
+  store.authMode = mode;
+  if(mode === 'signin'){
+    $('authBtn').textContent = '로그인';
+    $('authToggleText').textContent = '동네Bro 처음이세요?';
+    $('authToggleLink').textContent = '새 회사 등록';
+    hide('fldCompany'); hide('fldName');
+  } else {
+    $('authBtn').textContent = '회사 등록 + 가입';
+    $('authToggleText').textContent = '이미 계정 있으세요?';
+    $('authToggleLink').textContent = '로그인';
+    show('fldCompany'); show('fldName');
+  }
+  $('authBtn').disabled = false;
+}
+$('authToggleLink').onclick = () => setAuthMode(store.authMode==='signin'?'signup':'signin');
+$('authForm').onsubmit = (e) => { e.preventDefault(); store.authMode==='signin' ? doSignIn() : doSignUp(); };
+
+async function doSignIn(){
+  const email = $('authEmail').value.trim();
+  const pw = $('authPassword').value;
+  if(!email || !pw){ toast('이메일과 비밀번호를 입력해 주세요','err'); return; }
+  $('authBtn').disabled = true; $('authBtn').textContent='로그인 중...';
+  const { error } = await sb.auth.signInWithPassword({ email, password: pw });
+  if(error){
+    toast('로그인 실패: ' + error.message, 'err');
+    $('authBtn').disabled = false; $('authBtn').textContent='로그인';
+    return;
+  }
+  /* afterAuth 는 onAuthStateChange 가 호출 — 안전망으로 한 번 더 */
+  await afterAuth();
+}
+
+async function doSignUp(){
+  const company = $('authCompany').value.trim();
+  const name = $('authName').value.trim();
+  const email = $('authEmail').value.trim();
+  const pw = $('authPassword').value;
+  if(!company || !name || !email || !pw){ toast('모든 칸을 채워주세요','err'); return; }
+  if(pw.length < 6){ toast('비밀번호는 6자 이상','err'); return; }
+  $('authBtn').disabled = true; $('authBtn').textContent='등록 중...';
+  /* 1) Supabase 가입 */
+  const { data, error } = await sb.auth.signUp({ email, password: pw });
+  if(error){
+    toast('가입 실패: '+error.message,'err');
+    $('authBtn').disabled = false; $('authBtn').textContent='회사 등록 + 가입';
+    return;
+  }
+  if(!data || !data.user){
+    toast('가입은 됐어요 — 이메일 인증 후 로그인해 주세요','ok');
+    setAuthMode('signin');
+    return;
+  }
+  /* 2) 새 회사 + 프로필 만들기 */
+  try{
+    const companyId = uuid();
+    /* app_state row — JSONB 기반 단일 row */
+    const initialData = {
+      sites:[], quotes:[], contracts:[], payments:[],
+      consultations:[], consultRequests:[], consultTidies:[],
+      priceBook:[], events:[],
+      companySetup:{ company_name: company, ceo_name: name }
+    };
+    const ins = await sb.from('app_state').insert({
+      id: companyId,
+      state: { _v3:true, data: initialData },
+      updated_at: new Date().toISOString()
+    });
+    if(ins.error) console.warn('회사 row 생성 실패', ins.error);
+    /* 프로필 */
+    const prIns = await sb.from('profiles').upsert({
+      id: data.user.id,
+      email: email,
+      name: name,
+      company_id: companyId,
+      role: 'owner',
+      status: 'active'
+    }, { onConflict:'id' });
+    if(prIns.error) console.warn('프로필 생성 실패', prIns.error);
+    toast('✅ 회사 등록 완료!','ok');
+    await afterAuth();
+  }catch(e){
+    toast('등록 오류: '+e.message,'err');
+    $('authBtn').disabled = false; $('authBtn').textContent='회사 등록 + 가입';
+  }
+}
+
+async function signOut(){
+  if(!confirm('로그아웃 하시겠어요?')) return;
+  if(store.dirty){ await pushToCloud(); }
+  await sb.auth.signOut();
+  location.reload();
+}
+window.signOut = signOut;
+
+/* 인증 상태 변화 감지 */
+sb.auth.onAuthStateChange(async (event, session) => {
+  if(event === 'SIGNED_IN' && session && session.user){
+    store.user = { id: session.user.id, email: session.user.email };
+    await afterAuth();
+  } else if(event === 'SIGNED_OUT'){
+    store.user = null; store.profile = null; store.companyId = null;
+    hide('appShell'); show('authScreen'); hide('loadingScreen');
+  }
+});
+
+async function afterAuth(){
+  if(!store.user){
+    const { data } = await sb.auth.getSession();
+    if(!data || !data.session){ return; }
+    store.user = { id: data.session.user.id, email: data.session.user.email };
+  }
+  /* 프로필 로드 */
+  const { data: profiles, error: pErr } = await sb.from('profiles')
+    .select('id, email, name, company_id, role, status').eq('id', store.user.id);
+  if(pErr || !profiles || !profiles[0]){
+    toast('프로필 로드 실패 — 다시 가입해 주세요','err');
+    return;
+  }
+  store.profile = profiles[0];
+  store.companyId = profiles[0].company_id;
+  if(!store.companyId){ toast('회사 정보 없음 — 관리자에게 문의','err'); return; }
+  /* 회사 데이터 로드 */
+  const { data: rows } = await sb.from('app_state').select('state').eq('id', store.companyId).maybeSingle();
+  const state = rows && rows.state ? rows.state : null;
+  if(state && state.data){
+    store.data = Object.assign({
+      sites:[], quotes:[], contracts:[], payments:[],
+      consultations:[], consultRequests:[], consultTidies:[],
+      priceBook:[], events:[], companySetup:{}
+    }, state.data);
+  }
+  /* 화면 진입 */
+  hide('loadingScreen'); hide('authScreen');
+  $('userName').textContent = store.profile.name || store.profile.email;
+  show('appShell');
+  renderSidebar();
+  navigate(location.hash.slice(1) || 'home');
+}
+
+/* ===== 자동 저장 ===== */
+function markDirty(){
+  store.dirty = true;
+  clearTimeout(store.saveTimer);
+  store.saveTimer = setTimeout(pushToCloud, 1200);
+}
+async function pushToCloud(){
+  if(!store.companyId) return false;
+  try{
+    /* 최신 cloud state 가져와 머지 (다른 직원 충돌 방지) */
+    const { data: rows } = await sb.from('app_state').select('state').eq('id', store.companyId).maybeSingle();
+    const latest = (rows && rows.state) || { _v3:true, data:{} };
+    /* 우리 store.data 를 우선 (last-writer-wins, 단순) */
+    latest._v3 = true;
+    latest.data = store.data;
+    const { error } = await sb.from('app_state').upsert({
+      id: store.companyId,
+      state: latest,
+      updated_at: new Date().toISOString()
+    });
+    if(error) throw error;
+    store.dirty = false;
+    return true;
+  }catch(e){
+    console.warn('push err', e);
+    toast('저장 실패 — 자동 재시도','err');
+    return false;
+  }
+}
+
+/* ===== 라우팅 ===== */
+window.addEventListener('hashchange', () => navigate(location.hash.slice(1)));
+function navigate(route){
+  if(!store.user) return;
+  route = route || 'home';
+  store.view = route;
+  if('#'+route !== location.hash) location.hash = '#'+route;
+  renderSidebar();
+  renderMain();
+}
+window.navigate = navigate;
+
+/* ===== 사이드바 ===== */
+function renderSidebar(){
+  const sb = $('sidebar'); if(!sb) return;
+  const menu = [
+    { sect:'운영', items:[
+      { key:'home', label:'🏡 홈', show:true },
+      { key:'sites', label:'🏠 현장', show:true, badge: countActiveSites() }
+    ]},
+    { sect:'영업 흐름', items:[
+      { key:'consult-requests', label:'📨 상담 요청', show:true, badge: countPendingRequests() },
+      { key:'consult-schedule', label:'📞 상담 일정', show:true },
+      { key:'consult-tidy', label:'💬 상담 정리', show:true },
+      { key:'quotes', label:'📝 견적서', show:true },
+      { key:'contracts', label:'📜 계약서', show:true }
+    ]},
+    { sect:'관리', items:[
+      { key:'payments', label:'💰 결제 관리', show:true },
+      { key:'pricebook', label:'📚 원가 라이브러리', show:true },
+      { key:'calendar', label:'📅 전체 달력', show:true },
+      { key:'company', label:'⚙️ 회사 정보', show:true }
+    ]}
+  ];
+  let html = '';
+  menu.forEach(s => {
+    html += '<div class="nav-section">';
+    html += '<div class="nav-section-title">'+s.sect+'</div>';
+    s.items.filter(i=>i.show).forEach(i => {
+      const active = store.view === i.key ? ' active' : '';
+      const badge = i.badge ? '<span class="badge">'+i.badge+'</span>' : '';
+      html += '<button class="nav-btn'+active+'" onclick="navigate(\''+i.key+'\')">'+i.label+badge+'</button>';
+    });
+    html += '</div>';
+  });
+  sb.innerHTML = html;
+}
+function countActiveSites(){ return (store.data.sites||[]).filter(s=>s && !s._deleted && s.status==='진행').length; }
+function countPendingRequests(){ return (store.data.consultRequests||[]).filter(r=>r && !r._deleted && (!r._status || r._status==='request' || r._status==='대기')).length; }
+
+/* ===== 메인 뷰 ===== */
+function renderMain(){
+  const m = $('mainView'); if(!m) return;
+  const r = store.view;
+  if(r === 'home') return renderHome(m);
+  if(r === 'sites') return renderSites(m);
+  if(r.startsWith('site/')) return renderSiteDetail(m, r.slice(5));
+  if(r === 'consult-requests') return renderTodoPage(m, '📨 상담 요청', '곧 추가됩니다 (Phase 2)');
+  if(r === 'consult-schedule') return renderTodoPage(m, '📞 상담 일정', '곧 추가됩니다 (Phase 2)');
+  if(r === 'consult-tidy') return renderTodoPage(m, '💬 상담 정리', '곧 추가됩니다 (Phase 2)');
+  if(r === 'quotes') return renderTodoPage(m, '📝 견적서', '곧 추가됩니다 (Phase 2)');
+  if(r === 'contracts') return renderTodoPage(m, '📜 계약서', '곧 추가됩니다 (Phase 2)');
+  if(r === 'payments') return renderTodoPage(m, '💰 결제 관리', '곧 추가됩니다 (Phase 3)');
+  if(r === 'pricebook') return renderTodoPage(m, '📚 원가 라이브러리', '곧 추가됩니다 (Phase 3)');
+  if(r === 'calendar') return renderTodoPage(m, '📅 전체 달력', '곧 추가됩니다 (Phase 3)');
+  if(r === 'company') return renderCompany(m);
+  m.innerHTML = '<div class="empty-state"><span class="emoji">🤷</span><div class="ttl">화면을 찾지 못했어요</div></div>';
+}
+
+function renderTodoPage(m, title, msg){
+  m.innerHTML = '<div class="page-head"><div><div class="page-title">'+title+'</div></div></div>'
+    + '<div class="empty-state"><span class="emoji">🚧</span><div class="ttl">'+title+'</div><div class="sub">'+msg+'</div></div>';
+}
+
+/* === 홈 === */
+function renderHome(m){
+  const sites = (store.data.sites||[]).filter(s=>s && !s._deleted);
+  const activeSites = sites.filter(s=>s.status==='진행').length;
+  const totalQuote = sites.reduce((a,s)=> a+(s.quote||0), 0);
+  const totalPaid = sites.reduce((a,s)=> a+((s.payments||[]).reduce((b,p)=> b+(p.paidAmount||0), 0)), 0);
+  const companyName = (store.data.companySetup||{}).company_name || '내 회사';
+
+  m.innerHTML = ''
+    + '<div class="page-head"><div>'
+    + '<div class="page-title">🏡 홈 — '+escH(companyName)+'</div>'
+    + '<div class="page-sub">'+todayISO()+' · 환영합니다 '+escH(store.profile.name||'')+'님</div>'
+    + '</div></div>'
+    + '<div class="stat-grid">'
+    + '<div class="stat"><div class="lbl">전체 현장</div><div class="num">'+sites.length+'</div><div class="sub">곳</div></div>'
+    + '<div class="stat"><div class="lbl">진행 중</div><div class="num" style="color:var(--accent);">'+activeSites+'</div><div class="sub">곳</div></div>'
+    + '<div class="stat"><div class="lbl">계약 총액</div><div class="num">'+fmtKRW(totalQuote)+'</div><div class="sub">전체</div></div>'
+    + '<div class="stat"><div class="lbl">입금 누적</div><div class="num" style="color:var(--accent);">'+fmtKRW(totalPaid)+'</div><div class="sub">'+(totalQuote>0?Math.round(totalPaid/totalQuote*100)+'%':'-')+'</div></div>'
+    + '</div>'
+    + '<div class="card">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">'
+    + '<div style="font-size:15px;font-weight:800;">🏠 진행 중 현장</div>'
+    + '<button class="btn btn-primary btn-sm" onclick="openSiteForm()">+ 새 현장</button>'
+    + '</div>';
+  const active = sites.filter(s=>s.status==='진행' || !s.status);
+  if(!active.length){
+    m.innerHTML += '<div class="empty-state"><span class="emoji">🌱</span><div class="ttl">아직 등록된 현장이 없어요</div><div class="sub">「+ 새 현장」으로 시작하세요</div></div></div>';
+  } else {
+    m.innerHTML += '<div class="site-grid">'+active.slice(0,6).map(siteCard).join('')+'</div></div>';
+  }
+}
+
+/* === 현장 목록 === */
+function renderSites(m){
+  const sites = (store.data.sites||[]).filter(s=>s && !s._deleted);
+  m.innerHTML = ''
+    + '<div class="page-head">'
+    + '<div><div class="page-title">🏠 현장 목록</div><div class="page-sub">전체 '+sites.length+'곳</div></div>'
+    + '<button class="btn btn-primary" onclick="openSiteForm()">+ 새 현장</button>'
+    + '</div>';
+  if(!sites.length){
+    m.innerHTML += '<div class="empty-state"><span class="emoji">🏠</span><div class="ttl">등록된 현장이 없어요</div><div class="sub">「+ 새 현장」으로 시작하세요</div></div>';
+  } else {
+    m.innerHTML += '<div class="site-grid">'+sites.map(siteCard).join('')+'</div>';
+  }
+}
+
+function siteCard(s){
+  const status = s.status||'진행';
+  const paid = (s.payments||[]).reduce((a,p)=>a+(p.paidAmount||0),0);
+  const quote = s.quote||0;
+  return '<div class="site-card" onclick="navigate(\'site/'+s.id+'\')">'
+    + '<div class="row1"><span class="status status-'+status+'">'+status+'</span>'
+    + (s.size?'<span style="font-size:10.5px;color:var(--ink-faint);">'+s.size+'평</span>':'')+'</div>'
+    + '<div class="name">'+escH(s.name||'현장')+'</div>'
+    + '<div class="addr">'+escH(s.addr||'')+'</div>'
+    + '<div class="meta">'
+    + (s.customer?'<span>👤 '+escH(s.customer)+'</span>':'')
+    + (s.start?'<span>📅 '+s.start+'</span>':'')
+    + '</div>'
+    + (quote>0?'<div class="footer"><span>입금 '+(quote>0?Math.round(paid/quote*100):0)+'%</span><span class="price">'+fmtKRW(quote)+'</span></div>':'')
+    + '</div>';
+}
+
+/* === 현장 등록/수정 모달 === */
+function openSiteForm(id){
+  const s = id ? (store.data.sites||[]).find(x=>x.id===id) : {};
+  const isEdit = !!id;
+  const body = ''
+    + '<div class="fld"><div class="lbl">현장명 <span class="req">*</span></div>'
+    + '<input id="sfName" type="text" value="'+escH(s.name||'')+'" placeholder="예: 강남 ○○아파트 102동 1503호"></div>'
+    + '<div class="fld"><div class="lbl">주소</div>'
+    + '<input id="sfAddr" type="text" value="'+escH(s.addr||'')+'" placeholder="시·구·동 또는 도로명"></div>'
+    + '<div class="fld-row">'
+    + '<div class="fld"><div class="lbl">고객명</div><input id="sfCustomer" type="text" value="'+escH(s.customer||'')+'"></div>'
+    + '<div class="fld"><div class="lbl">연락처</div><input id="sfPhone" type="text" value="'+escH(s.customerPhone||'')+'" placeholder="010-..."></div>'
+    + '</div>'
+    + '<div class="fld-row">'
+    + '<div class="fld"><div class="lbl">평수</div><input id="sfSize" type="number" value="'+(s.size||'')+'" placeholder="32"></div>'
+    + '<div class="fld"><div class="lbl">상태</div><select id="sfStatus">'
+    + ['견적','진행','완료','보류'].map(st=>'<option value="'+st+'"'+((s.status||'진행')===st?' selected':'')+'>'+st+'</option>').join('')
+    + '</select></div></div>'
+    + '<div class="fld-row">'
+    + '<div class="fld"><div class="lbl">착공일</div><input id="sfStart" type="date" value="'+(s.start||'')+'"></div>'
+    + '<div class="fld"><div class="lbl">준공일</div><input id="sfEnd" type="date" value="'+(s.end||'')+'"></div>'
+    + '</div>'
+    + '<div class="fld"><div class="lbl">계약금액 (원)</div>'
+    + '<input id="sfQuote" type="number" value="'+(s.quote||'')+'" placeholder="예: 35000000"></div>';
+  const foot = (isEdit?'<button class="btn btn-danger" onclick="deleteSite(\''+id+'\')">🗑 삭제</button>':'')
+    + '<button class="btn btn-ghost" onclick="closeModal()">취소</button>'
+    + '<button class="btn btn-primary" onclick="saveSite(\''+(id||'')+'\')">'+(isEdit?'수정':'등록')+'</button>';
+  openModal(isEdit?'현장 수정':'새 현장 등록', body, foot);
+}
+window.openSiteForm = openSiteForm;
+
+function saveSite(id){
+  const name = $('sfName').value.trim();
+  if(!name){ toast('현장명을 입력해 주세요','err'); return; }
+  if(!Array.isArray(store.data.sites)) store.data.sites = [];
+  let s;
+  if(id){
+    s = store.data.sites.find(x=>x.id===id);
+    if(!s) return;
+  } else {
+    s = { id: uuid(), createdAt: Date.now(), memos:[], photos:[], payments:[] };
+    store.data.sites.push(s);
+  }
+  s.name = name;
+  s.addr = $('sfAddr').value.trim();
+  s.customer = $('sfCustomer').value.trim();
+  s.customerPhone = $('sfPhone').value.trim();
+  s.size = Number($('sfSize').value)||0;
+  s.status = $('sfStatus').value;
+  s.start = $('sfStart').value;
+  s.end = $('sfEnd').value;
+  s.quote = Number($('sfQuote').value)||0;
+  s.updatedAt = Date.now();
+  markDirty();
+  pushToCloud().then(ok => { if(ok) toast('✅ '+(id?'수정':'등록')+' 완료','ok'); });
+  closeModal();
+  if(store.view==='home') renderHome($('mainView'));
+  else if(store.view==='sites') renderSites($('mainView'));
+  else renderMain();
+  renderSidebar();
+}
+window.saveSite = saveSite;
+
+function deleteSite(id){
+  if(!confirm('정말로 이 현장을 삭제하시겠어요?\n(메모·사진·결제 정보 모두 함께 삭제)')) return;
+  const s = (store.data.sites||[]).find(x=>x.id===id);
+  if(!s) return;
+  s._deleted = true; s._deletedAt = Date.now();
+  markDirty(); pushToCloud();
+  toast('🗑 삭제됨','ok');
+  closeModal();
+  navigate('sites');
+}
+window.deleteSite = deleteSite;
+
+/* === 현장 상세 === */
+function renderSiteDetail(m, siteId){
+  const s = (store.data.sites||[]).find(x=>x && x.id===siteId && !x._deleted);
+  if(!s){
+    m.innerHTML = '<div class="empty-state"><span class="emoji">😶</span><div class="ttl">현장을 찾을 수 없어요</div></div>';
+    return;
+  }
+  const memos = (s.memos||[]).slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const photos = s.photos||[];
+  m.innerHTML = ''
+    + '<div style="margin-bottom:14px;"><button class="btn btn-ghost btn-sm" onclick="navigate(\'sites\')">← 현장 목록</button></div>'
+    + '<div class="page-head">'
+    + '<div><div class="page-title">'+escH(s.name)+'</div>'
+    + '<div class="page-sub">'+escH(s.addr||'주소 미입력')+(s.size?' · '+s.size+'평':'')+' · <span class="status status-'+(s.status||'진행')+'">'+(s.status||'진행')+'</span></div></div>'
+    + '<button class="btn btn-ghost" onclick="openSiteForm(\''+s.id+'\')">✏️ 수정</button>'
+    + '</div>'
+    + '<div class="card" style="margin-bottom:14px;">'
+    + '<div style="font-size:15px;font-weight:800;margin-bottom:12px;">📋 기본 정보</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;font-size:13.5px;">'
+    + infoCell('고객', s.customer)
+    + infoCell('연락처', s.customerPhone)
+    + infoCell('착공일', s.start)
+    + infoCell('준공일', s.end)
+    + infoCell('계약금액', s.quote?fmtKRW(s.quote):'')
+    + '</div></div>'
+    + '<div class="card" style="margin-bottom:14px;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
+    + '<div style="font-size:15px;font-weight:800;">📝 메모 / 일지 ('+memos.length+')</div>'
+    + '<button class="btn btn-primary btn-sm" onclick="addMemoPrompt(\''+s.id+'\')">+ 메모 추가</button>'
+    + '</div>'
+    + (memos.length?memos.map(m=>memoRow(s.id,m)).join(''):'<div class="empty-state" style="padding:30px;"><div class="sub">아직 메모가 없어요</div></div>')
+    + '</div>'
+    + '<div class="card">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
+    + '<div style="font-size:15px;font-weight:800;">📷 사진 ('+photos.length+')</div>'
+    + '<button class="btn btn-primary btn-sm" onclick="pickPhotos(\''+s.id+'\')">+ 사진</button>'
+    + '</div>'
+    + (photos.length
+        ?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;">'+photos.map(p=>photoTile(s.id,p)).join('')+'</div>'
+        :'<div class="empty-state" style="padding:30px;"><div class="sub">사진을 추가해보세요</div></div>')
+    + '</div>';
+}
+function infoCell(label, val){
+  return '<div><div style="font-size:10.5px;color:var(--ink-faint);font-weight:700;margin-bottom:2px;">'+label+'</div>'
+    + '<div style="font-weight:600;color:var(--ink);">'+(val?escH(val):'<span style="color:var(--ink-faint);">―</span>')+'</div></div>';
+}
+function memoRow(siteId, m){
+  const cat = m.category||'일반';
+  const dt = m.createdAt ? new Date(m.createdAt).toLocaleString('ko-KR') : '';
+  return '<div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px;">'
+    + '<div style="font-size:11px;color:var(--ink-faint);display:flex;gap:8px;align-items:center;margin-bottom:4px;">'
+    + '<span style="background:var(--paper-soft);padding:2px 8px;border-radius:999px;font-weight:700;color:var(--ink-mute);">'+escH(cat)+'</span>'
+    + '<span>'+dt+'</span>'
+    + (m.by?'<span>· '+escH(m.by)+'</span>':'')
+    + '<button class="btn btn-danger btn-sm" style="margin-left:auto;" onclick="deleteMemo(\''+siteId+'\',\''+m.id+'\')">삭제</button>'
+    + '</div>'
+    + '<div style="font-size:13.5px;color:var(--ink);white-space:pre-wrap;word-break:break-word;">'+escH(m.text||'')+'</div>'
+    + '</div>';
+}
+function photoTile(siteId, p){
+  return '<div style="aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--paper-soft);position:relative;cursor:pointer;" onclick="window.open(\''+p.dataUrl+'\',\'_blank\')">'
+    + '<img src="'+p.dataUrl+'" style="width:100%;height:100%;object-fit:cover;">'
+    + '<button style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.55);color:#fff;width:24px;height:24px;border-radius:50%;font-size:11px;font-weight:700;border:none;cursor:pointer;" onclick="event.stopPropagation();deletePhoto(\''+siteId+'\',\''+p.id+'\')">✕</button>'
+    + '</div>';
+}
+
+function addMemoPrompt(siteId){
+  const body = ''
+    + '<div class="fld"><div class="lbl">카테고리</div>'
+    + '<select id="mfCat">'
+    + ['공정','고객','일반','특이사항'].map(c=>'<option value="'+c+'">'+c+'</option>').join('')
+    + '</select></div>'
+    + '<div class="fld"><div class="lbl">메모 <span class="req">*</span></div>'
+    + '<textarea id="mfText" rows="4" placeholder="자유롭게 적어주세요"></textarea></div>';
+  const foot = '<button class="btn btn-ghost" onclick="closeModal()">취소</button>'
+    + '<button class="btn btn-primary" onclick="addMemo(\''+siteId+'\')">추가</button>';
+  openModal('📝 메모 추가', body, foot);
+}
+window.addMemoPrompt = addMemoPrompt;
+
+function addMemo(siteId){
+  const text = $('mfText').value.trim();
+  if(!text){ toast('내용을 입력해 주세요','err'); return; }
+  const cat = $('mfCat').value;
+  const s = (store.data.sites||[]).find(x=>x.id===siteId);
+  if(!s) return;
+  s.memos = s.memos||[];
+  s.memos.unshift({
+    id: uuid(),
+    category: cat,
+    text: text,
+    by: store.profile.name || store.user.email,
+    createdAt: Date.now()
+  });
+  markDirty(); pushToCloud();
+  closeModal();
+  toast('✅ 메모 추가','ok');
+  renderSiteDetail($('mainView'), siteId);
+}
+window.addMemo = addMemo;
+
+function deleteMemo(siteId, memoId){
+  if(!confirm('이 메모를 삭제할까요?')) return;
+  const s = (store.data.sites||[]).find(x=>x.id===siteId);
+  if(!s||!s.memos) return;
+  s.memos = s.memos.filter(m=>m.id!==memoId);
+  markDirty(); pushToCloud();
+  toast('🗑 삭제','ok');
+  renderSiteDetail($('mainView'), siteId);
+}
+window.deleteMemo = deleteMemo;
+
+function pickPhotos(siteId){
+  const inp = document.createElement('input');
+  inp.type='file'; inp.accept='image/*'; inp.multiple=true;
+  inp.onchange = async () => {
+    const files = Array.from(inp.files||[]);
+    if(!files.length) return;
+    const s = (store.data.sites||[]).find(x=>x.id===siteId);
+    if(!s) return;
+    s.photos = s.photos||[];
+    toast('사진 업로드 중...');
+    for(const f of files){
+      const url = await readAsDataURL(f);
+      const resized = await resizeImage(url, 1200, 0.78);
+      s.photos.unshift({
+        id: uuid(),
+        dataUrl: resized,
+        caption: f.name.replace(/\.[^.]+$/,''),
+        by: store.profile.name || store.user.email,
+        uploadedAt: Date.now()
+      });
+    }
+    markDirty(); pushToCloud();
+    toast('✅ 사진 '+files.length+'장 추가','ok');
+    renderSiteDetail($('mainView'), siteId);
+  };
+  inp.click();
+}
+window.pickPhotos = pickPhotos;
+
+function readAsDataURL(file){
+  return new Promise((res,rej)=>{
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+function resizeImage(dataUrl, maxDim, quality){
+  return new Promise((res) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if(w > maxDim || h > maxDim){
+        const scale = maxDim / Math.max(w,h);
+        w = Math.round(w*scale); h = Math.round(h*scale);
+      }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      res(c.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => res(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+function deletePhoto(siteId, pid){
+  if(!confirm('이 사진을 삭제할까요?')) return;
+  const s = (store.data.sites||[]).find(x=>x.id===siteId);
+  if(!s||!s.photos) return;
+  s.photos = s.photos.filter(p=>p.id!==pid);
+  markDirty(); pushToCloud();
+  renderSiteDetail($('mainView'), siteId);
+}
+window.deletePhoto = deletePhoto;
+
+/* === 회사 정보 === */
+function renderCompany(m){
+  const cs = store.data.companySetup||{};
+  m.innerHTML = ''
+    + '<div class="page-head"><div><div class="page-title">⚙️ 회사 정보</div>'
+    + '<div class="page-sub">견적서·계약서에 표시되는 정보</div></div></div>'
+    + '<div class="card">'
+    + companyField('회사명','company_name',cs.company_name)
+    + companyField('대표명','ceo_name',cs.ceo_name)
+    + companyField('사업자등록번호','business_number',cs.business_number)
+    + companyField('전화번호','phone',cs.phone)
+    + companyField('주소','address',cs.address)
+    + companyField('이메일','email',cs.email)
+    + companyField('계좌 정보','bank_info',cs.bank_info)
+    + companyField('사무실 (쉼표 구분)','offices',cs.offices,'예: 구미사무실, 대구사무실')
+    + '<button class="btn btn-primary" style="margin-top:14px;width:100%;padding:13px;" onclick="saveCompany()">💾 저장</button>'
+    + '</div>';
+}
+function companyField(label, key, val, placeholder){
+  return '<div class="fld"><div class="lbl">'+label+'</div>'
+    + '<input id="cf_'+key+'" type="text" value="'+escH(val||'')+'" placeholder="'+(placeholder||'')+'"></div>';
+}
+function saveCompany(){
+  const fields = ['company_name','ceo_name','business_number','phone','address','email','bank_info','offices'];
+  const cs = store.data.companySetup||{};
+  fields.forEach(f => { const el = $('cf_'+f); if(el) cs[f] = el.value.trim(); });
+  store.data.companySetup = cs;
+  markDirty();
+  pushToCloud().then(ok => toast(ok?'✅ 저장 완료':'저장 실패', ok?'ok':'err'));
+}
+window.saveCompany = saveCompany;
+
+/* ===== 시작 ===== */
+(async function init(){
+  /* 인증 모드 초기화 */
+  setAuthMode('signin');
+  const { data } = await sb.auth.getSession();
+  if(data && data.session){
+    store.user = { id: data.session.user.id, email: data.session.user.email };
+    await afterAuth();
+  } else {
+    hide('loadingScreen');
+    show('authScreen');
+  }
+})();
+</script>
+</body>
+</html>
